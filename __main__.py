@@ -67,10 +67,11 @@ def searchClifor(id_clifor,con):
     try:
         name = name[0][0]
     except IndexError:
-       raise IndexError("Id do Clifor não encontrado")
+       print("Id do Clifor não encontrado")
+    except Exception:
+        raise ValueError("Erro nao catalogado")
     else:
-        return name  
-
+        return name
     
 def main():
     dataBasePath = getPath()
