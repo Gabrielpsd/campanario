@@ -2,11 +2,13 @@
 from  PyPDF2 import PdfFileWriter
 import fdb
 import configparser
+import traceback
 
 ConfigName = "CONFIG.ini"
 
 def creatReport(idClifor,cursor):
-    safras = getSafras(cursor) 
+    safras = getSafras(cursor)
+    extractData(idClifor,safras,cursor) 
     
 def extractData(idClifor,safras,cursor):
     command = """
@@ -22,7 +24,7 @@ def extractData(idClifor,safras,cursor):
         on (clifor.id = arm_salclifor_fs.id_clifor)
     left join arm_especie  
         on (arm_especie.id_especie = arm_salclifor_fs.id_especie)
-    where arm_salclifor_fs.id_clifor = %d and alr_salclifor_fs.id_safra = %d
+    where arm_salclifor_fs.id_clifor = %d and arm_salclifor_fs.id_safra = %d
     order by arm_salclifor_fs.data desc
     """ 
     resultado = []
@@ -38,14 +40,19 @@ def extractData(idClifor,safras,cursor):
        
 def getSafras(cursor):
     command = """
-        select id , descricao from safra
+        select id_safra , descricao from safra
     """   
-    cursor.execute(command)
-    
-    safras = []
-    for safra in cursor:
-        safras.append(safra)
-    
+    try:
+        cursor.execute(command)
+    except:
+        raise Exception("Erro ao executar comando GetSafra")
+    else: 
+        safras = []
+        for safra in cursor:
+            safras.append(safra)
+        return safras
+ 
+# Read the INI file and get the path to the database   
 def getPath():
     config = configparser.ConfigParser()
     config.sections() 
@@ -53,6 +60,7 @@ def getPath():
     
     DataBasePath = config["DATAPTH"]["DatabasePath"]
     return DataBasePath
+
 
 def searchClifor(id_clifor,con):
     command = """
@@ -64,12 +72,13 @@ def searchClifor(id_clifor,con):
     # the return of fetchall is a list of tuples so we must get the position  
     name = con.fetchall()
     
+    # returned a empty name we filter the error
     try:
         name = name[0][0]
     except IndexError:
-       print("Id do Clifor não encontrado")
+       raise IndexError("Id do Clifor não encontrado")
     except Exception:
-        raise ValueError("Erro nao catalogado")
+        raise Exception("Erro nao catalogado")
     else:
         return name
     
@@ -87,11 +96,12 @@ def main():
         
         try:
             cliforName = searchClifor(id_clifor,cursor)
-        except ValueError as value:
-            if value == IndexError:
-                print("Id clifor nao encontrado ")
-            else:
-                print("Erro inesperado")
+        except IndexError as value:
+            print(traceback.format_exception_only(type(value),value)[0])
+            continue
+        except Exception as error:
+            print(traceback.format_exception_only(type(error),error))
+           
         else:
             print(f"Criar relatorio para o {cliforName}")
             opcao = int(input("1- Sim    2- Não  3- sair \n Digite a opcao: "))
