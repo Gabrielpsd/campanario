@@ -3,20 +3,23 @@ from  PyPDF2 import PdfFileWriter
 import fdb
 import configparser
 import traceback
+import datetime
+from openpyxl.workbook import Workbook
+from openpyxl.styles import PatternFill, Alignment
 
 ConfigName = "CONFIG.ini"
 
 def creatReport(idClifor,cursor):
     safras = getSafras(cursor)
-    extractData(idClifor,safras,cursor) 
+    return extractData(idClifor,safras,cursor) 
     
 def extractData(idClifor,safras,cursor):
     command = """
     select distinct
     safra.descricao,
-    clifor.nome,
     arm_especie.descricao,
-    arm_salclifor_fs.saldo_seco
+    arm_salclifor_fs.saldo_seco,
+    arm_salclifor_fs.id_safra 
     from arm_salclifor_fs
     left join safra
         on (safra.id_safra =  arm_salclifor_fs.id_safra)
@@ -33,11 +36,52 @@ def extractData(idClifor,safras,cursor):
         cursor.execute(command%(idClifor,safra[0]))
         
         for data in cursor:
-            resultado.append(data)
+            resultado.append(data)      
+              
+    return resultado
+
+def creatExcel(Clifor,datas,cursor):
+    fields = [Clifor,"Safra","Insumo", "Saldo"]
+    safras = getSafras(cursor)
+    date = datetime.datetime.now().strftime("%X").replace(':','_')
+    row = 0
+    column = 0
+    wb = Workbook()
     
-    print("--------------- resultado das buscas ------------------ ")
-    print(resultado)
-       
+    work = wb.active
+    work.title = Clifor
+    work.auto_filter.ref = "B4"
+    
+    # the initial position of the name of the clifor will be in the 
+    # B2 e C2 merged cell
+    
+    row = column = 2
+    
+    work.merge_cells(start_row=row,start_column=2,end_row=row,end_column =column +1)
+    work.cell(row=row,column=column,value=Clifor)
+    
+    row = row + 3
+    
+    # each "safra" will be a tuple, bein the first positional argument the ID of the safra 
+    # and the second posiotion argument the description of the safra
+    for safra in safras:
+        
+        work.merge_cells(start_row=row,start_column=2,end_row=row,end_column =column +1)
+        work.cell(row=row,column=column,value=safra[1])
+        row = row + 1
+        
+        for data in datas:
+            if (data[3] == safra[0]):
+                #dadoInscrever = (data[1],int(data[2]))
+                work.cell(row=row,column=column,value=data[1])
+                work.cell(row=row,column=column+1,value=f"{data[2]} Kg")
+                row = row + 1
+                
+        row = row + 1 
+    savePath = getSavePath()
+    wb.save(f"{savePath}\\saldo_{date}.xlsx")
+        
+
 def getSafras(cursor):
     command = """
         select id_safra , descricao from safra
@@ -61,6 +105,13 @@ def getPath():
     DataBasePath = config["DATAPTH"]["DatabasePath"]
     return DataBasePath
 
+def getSavePath():
+    config = configparser.ConfigParser()
+    config.sections() 
+    config.read(ConfigName)
+    
+    DataSavePath = config["DATAPTH"]["SavePath"]
+    return DataSavePath
 
 def searchClifor(id_clifor,con):
     command = """
@@ -107,9 +158,13 @@ def main():
             opcao = int(input("1- Sim    2- Não  3- sair \n Digite a opcao: "))
             
             if opcao == 1:
-                creatReport(id_clifor, cursor)
+                report = creatReport(id_clifor, cursor)
+                print(report)
+                creatExcel(cliforName,report,cursor)
+                connection.close()
                 break
             elif opcao == 3:
+                connection.close()
                 exit()
         
 if "__main__" == __name__:
