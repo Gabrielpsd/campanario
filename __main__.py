@@ -9,35 +9,54 @@ from openpyxl.styles import PatternFill, Alignment
 
 ConfigName = "CONFIG.ini"
 
-def creatReport(idClifor,cursor):
+    
+def extractData(idClifor,cursor):
     safras = getSafras(cursor)
-    return extractData(idClifor,safras,cursor) 
-    
-def extractData(idClifor,safras,cursor):
+    especies = getSpecies(cursor)
+    date = datetime.datetime.now().strftime("%d.%m.%Y")
     command = """
-    select distinct
-    safra.descricao,
-    arm_especie.descricao,
-    arm_salclifor_fs.saldo_seco,
-    arm_salclifor_fs.id_safra 
-    from arm_salclifor_fs
-    left join safra
-        on (safra.id_safra =  arm_salclifor_fs.id_safra)
-    left join clifor
-        on (clifor.id = arm_salclifor_fs.id_clifor)
-    left join arm_especie  
-        on (arm_especie.id_especie = arm_salclifor_fs.id_especie)
-    where arm_salclifor_fs.id_clifor = %d and arm_salclifor_fs.id_safra = %d
-    order by arm_salclifor_fs.data desc
+    select
+    first 1
+    safra.id_safra,
+    safra.descricao safra,
+    arm_especie.descricao especie,
+    ARM_GET_SALCLIFORFS_ATU.rsaldo_verde saldo_verde_kg,
+    (ARM_GET_SALCLIFORFS_ATU.rsaldo_verde / coalesce(nullif(arm_especie.peso_saca,0), 60)) saldo_verde_sc,
+    ARM_GET_SALCLIFORFS_ATU.rsaldo_seco saldo_seco_kg,
+    (ARM_GET_SALCLIFORFS_ATU.rsaldo_seco / coalesce(nullif(arm_especie.peso_saca,0), 60)) saldo_seco_sc
+    from ARM_GET_SALCLIFORFS_ATU(10, {pid_safra} , {pid_especie}, {pid_clifor}, {data})
+    join safra
+    on (safra.id_safra = {pid_safra})
+    join arm_especie
+    on (arm_especie.id_especie = {pid_especie})
+    join clifor
+    on (clifor.id = {pid_clifor})
+
     """ 
+    # ordem dos parametros: safra, especie, clifor , data
     resultado = []
+    #print("safras",safras)
+    #print("especies", especies)
+    #print("data",date)
     
+    # even safra and especie ia list of tulples so we must get the fist of each iterable element
     for safra in safras:
-        cursor.execute(command%(idClifor,safra[0]))
         
-        for data in cursor:
-            resultado.append(data)      
-              
+        for especie in especies:
+            # print("comando: ",safra[0],especie[0],idClifor,f"'{date}'")
+            print(command.format(pid_safra=safra[0],pid_especie=especie[0],pid_clifor =idClifor,data=f"'{date}'"))
+            #cursor.execute(command%(safra[0],especie[0],idClifor,date))
+            
+            cursor.execute(command.format(pid_safra=safra[0],pid_especie=especie[0],pid_clifor =idClifor,data=f"'{date}'"))
+
+            aux = cursor.fetchall()
+            
+            if(aux != []):
+                print(aux)
+                resultado.append(aux) 
+    
+    print(resultado)
+ 
     return resultado
 
 def creatExcel(Clifor,datas,cursor):
@@ -81,7 +100,22 @@ def creatExcel(Clifor,datas,cursor):
     savePath = getSavePath()
     wb.save(f"{savePath}\\saldo_{date}.xlsx")
         
-
+def getSpecies(cursor):
+    command = """
+    select id_especie,descricao
+    from arm_especie
+    """
+    
+    try:
+        cursor.execute(command)
+    except:
+        raise Exception("Erro ao executar comando GetEspecies")
+    else: 
+        especies = []
+        for especie in cursor:
+            especies.append(especie)
+        return especies
+    
 def getSafras(cursor):
     command = """
         select id_safra , descricao from safra
@@ -158,7 +192,7 @@ def main():
             opcao = int(input("1- Sim    2- Não  3- sair \n Digite a opcao: "))
             
             if opcao == 1:
-                report = creatReport(id_clifor, cursor)
+                report = extractData(id_clifor, cursor)
                 print(report)
                 creatExcel(cliforName,report,cursor)
                 connection.close()
